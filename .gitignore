@@ -1,0 +1,10 @@
+*.pyc
+*.egg-info
+*.tox
+*.coverage
+*~
+.DS_Store
+build
+dist
+htmlcov
+.tmp*
