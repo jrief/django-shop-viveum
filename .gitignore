@@ -3,8 +3,10 @@
 *.tox
 *.coverage
 *~
+*.sqlite
+*.coveragerc
 .DS_Store
 build
 dist
 htmlcov
-.tmp*
+*.tmp*
