@@ -16,8 +16,8 @@ from django.http import HttpResponse, HttpResponseRedirect, \
     HttpResponseBadRequest, HttpResponseServerError
 from django.views.decorators.csrf import csrf_exempt
 from shop.util.address import get_billing_address_from_request
-from forms import OrderStandardForm
-from models import Confirmation
+from forms import OrderStandardForm, ConfirmationForm
+from models import Confirmation, Order
 
 
 class OffsiteViveumBackend(object):
@@ -25,9 +25,13 @@ class OffsiteViveumBackend(object):
     Glue code to let django-SHOP talk to the Viveum backend.
     '''
     backend_name = url_namespace = 'viveum'
-    SHA_IN_PARAMETERS = ('AMOUNT', 'BRAND', 'CURRENCY', 'CN', 'EMAIL', 'LANGUAGE',
-        'ORDERID', 'PSPID', 'TITLE', 'PM', 'OWNERZIP', 'OWNERADDRESS', 'OWNERADDRESS2',
-        'OWNERTOWN', 'OWNERCTY',)
+    SHA_IN_PARAMETERS = set(('AMOUNT', 'BRAND', 'CURRENCY', 'CN', 'EMAIL',
+        'LANGUAGE', 'ORDERID', 'PSPID', 'TITLE', 'PM', 'OWNERZIP', 'OWNERADDRESS',
+        'OWNERADDRESS2', 'OWNERTOWN', 'OWNERCTY', 'ACCEPTURL', 'DECLINEURL',
+        'EXCEPTIONURL', 'CANCELURL'))
+    SHA_OUT_PARAMETERS = set(('ACCEPTANCE', 'AMOUNT', 'CARDNO', 'CN', 'CURRENCY',
+         'IP','NCERROR', 'ORDERID', 'PAYID', 'STATUS'))
+    CONFIRMATION_PARAMETERS = [f.name for f in Confirmation._meta.fields]
 
     #===========================================================================
     # Defined by the backends API
@@ -36,15 +40,15 @@ class OffsiteViveumBackend(object):
     def __init__(self, shop):
         self.shop = shop
         self.logger = logging.getLogger(__name__)
-        self.SHA_IN_PARAMETERS = set(self.SHA_IN_PARAMETERS)
+        #self.CONFIRMATION_PARAMETERS = [f.name for f in Confirmation._meta.fields]
         assert type(settings.VIVEUM_PAYMENT).__name__ == 'dict', \
             "You need to configure a VIVEUM_PAYMENT dictionary in settings"
 
     def get_urls(self):
         urlpatterns = patterns('',
             url(r'^$', self.view_that_asks_for_money, name='viveum'),
-            url(r'^success$', self.viveum_return_success_view, name='viveum_success'),
-            url(r'^error$', self.view_that_asks_for_money, name='viveum_error'),
+            url(r'^accept$', self.return_success_view, name='viveum_accept'),
+            url(r'^decline$', self.return_decline_view, name='viveum_decline'),
         )
         return urlpatterns
 
@@ -70,8 +74,8 @@ class OffsiteViveumBackend(object):
         email = ''
         if request.user and not isinstance(request.user, AnonymousUser):
             email = request.user.email
-        url_scheme = 'https' if request.is_secure() else 'http'
-        url_domain = get_current_site(request).domain
+        url_scheme = 'https://%s%s' if request.is_secure() else 'http://%s%s'
+        domain = get_current_site(request).domain
         form_dict = {
             'PSPID': settings.VIVEUM_PAYMENT.get('PSPID'),
             'CURRENCY': settings.VIVEUM_PAYMENT.get('CURRENCY'),
@@ -86,37 +90,28 @@ class OffsiteViveumBackend(object):
             'OWNERADDRESS2': getattr(billing_address, 'address2', ''),
             'OWNERTOWN': getattr(billing_address, 'city', ''),
             'OWNERCTY': getattr(billing_address, 'country', ''),
+            'ACCEPTURL': url_scheme % (domain, reverse('viveum_accept')),
+            'DECLINEURL': url_scheme % (domain, reverse('viveum_decline')),
         }
-        form_dict.update({ 'SHASIGN': self._get_shasign(form_dict) })
+        form_dict['SHASIGN'] = self._get_sha_sign(form_dict, self.SHA_IN_PARAMETERS,
+                                settings.VIVEUM_PAYMENT.get('SHA1_IN_SIGNATURE'))
         return form_dict
 
-    def _get_shasign(self, form_dict):
+    def _get_sha_sign(self, form_dict, parameters, passphrase):
         """
         Add the cryptographic SHA1 signature to the given form dictionary.
         """
-        sha_in_parameters = sorted(self.SHA_IN_PARAMETERS.intersection(form_dict.iterkeys()))
-        sha_in_parameters = filter(lambda key: form_dict.get(key), sha_in_parameters)
-        print sha_in_parameters
-        passphrase = settings.VIVEUM_PAYMENT.get('PASSPHRASE')
-        values = ['%s=%s%s' % (key.upper(), form_dict.get(key), passphrase) for key in sha_in_parameters]
-        #print ''.join(values)
+        form_dict = dict((key.upper(), value) for key, value in form_dict.iteritems())
+        sha_parameters = sorted(parameters.intersection(form_dict.iterkeys()))
+        sha_parameters = filter(lambda key: form_dict.get(key), sha_parameters)
+        values = ['%s=%s%s' % (key.upper(), form_dict.get(key), passphrase) for key in sha_parameters]
         return hashlib.sha1(''.join(values)).hexdigest().upper()
-
-    def get_processor_urls(self, request):
-            url = 'https://' if request.is_secure() else 'http://'
-            url += get_current_site(request).domain
-            self.logger.debug('Processor URL: %s' % url)
-            return {
-                'redirectUrl': url + reverse('ipayment_success'),
-                'silentErrorUrl': url + reverse('ipayment_error'),
-                'hiddenTriggerUrl': url + reverse('ipayment_hidden'),
-            }
 
     #===========================================================================
     # Handlers, which process GET redirects initiated by IPayment
     #===========================================================================
 
-    def viveum_return_success_view(self, request):
+    def return_success_view(self, request):
         """
         The view the customer is redirected to from the IPayment server after a
         successful payment.
@@ -127,21 +122,46 @@ class OffsiteViveumBackend(object):
             return HttpResponseBadRequest('Request method %s not allowed here' %
                                           request.method)
         try:
-            shopper_id = int(request.GET['shopper_id'])
-            self.logger.info('IPayment for order %s redirected client with status %s',
-                             shopper_id, request.GET['ret_status'])
-            if request.GET['ret_status'] != 'SUCCESS':
+            query_dict = dict((key.lower(), value) for key, value in request.GET.iteritems())
+            query_dict['order'] = query_dict['orderid']
+            confirmation = ConfirmationForm(query_dict)
+            if confirmation.is_valid():
+                print 'confirmation is valid: %s' % confirmation.cleaned_data
+            else:
+                print confirmation.errors
+            shaoutsign = self._get_sha_sign(query_dict, self.SHA_OUT_PARAMETERS, settings.VIVEUM_PAYMENT.get('SHA1_OUT_SIGNATURE'))
+            if shaoutsign != confirmation.cleaned_data['shasign']:
+                raise SuspiciousOperation('Confirm redirection by PSP has a divergent SHA1 signature')
+            orderid = int(request.GET.get('orderID'))
+            order = Order.objects.get(pk=orderid)
+            status = request.GET.get('STATUS')
+            self.logger.info('PSP redirected client with status %s for order %s', 
+                confirmation.cleaned_data['status'], confirmation.cleaned_data['orderid'])
+            if not status.startswith('5'):
                 return HttpResponseRedirect(self.shop.get_cancel_url())
-            confirmation = Confirmation.objects.filter(shopper_id=shopper_id)
-            if confirmation.count() == 0:
-                raise SuspiciousOperation('Redirect by IPayment rejected: '
-                    'No order confirmation found for shopper_id %s.' % shopper_id)
+            cfmnattrs = { 'order': order }
+            for key, value in request.GET.iteritems():
+                key = key.lower()
+                if key in self.CONFIRMATION_PARAMETERS:
+                    cfmnattrs[key] = value
+            Confirmation.objects.get_or_create(**cfmnattrs)
+            self.shop.confirm_payment(order, request.GET.get('amount'),
+                request.GET.get('PAYID'), self.backend_name)
             return HttpResponseRedirect(self.shop.get_finished_url())
         except Exception as exception:
             # since this response is sent to IPayment, catch errors locally
-            logging.error(exception.__str__())
+            logging.error('%s while performing request %s' % (exception.__str__(), request))
             traceback.print_exc()
             return HttpResponseServerError('Internal error in ' + __name__)
+
+    def return_decline_view(self, request):
+        """
+        The view the customer is redirected to from the IPayment server after a
+        successful payment.
+        This view is called after 'payment_was_successful' has been called, so
+        the confirmation of the payment is always available here.
+        """
+        print "return_decline_view"
 
     #===========================================================================
     # Handlers, which process POST data from IPayment

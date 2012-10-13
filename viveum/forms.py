@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from django import forms
+from viveum.models import Confirmation
 
 
 class OrderStandardForm(forms.Form):
@@ -11,3 +12,14 @@ class OrderStandardForm(forms.Form):
         super(OrderStandardForm, self).__init__(*args, **kwargs)
         for field, value in initial.iteritems:
             self.fields[field] = forms.CharField(widget=forms.HiddenInput, initial=value)
+
+
+class ConfirmationForm(forms.ModelForm):
+    """
+    Form holding confirmation data sent by PSP when a payment was successful.
+    """
+    class Meta:
+        model = Confirmation
+
+    orderid = forms.IntegerField()
+    shasign = forms.CharField(min_length=40)

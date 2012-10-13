@@ -2,6 +2,7 @@
 from django.utils.translation import ugettext_lazy as _
 from django.db import models
 from shop.util.fields import CurrencyField
+from shop.models import Order
 
 
 class Confirmation(models.Model):
@@ -11,24 +12,24 @@ class Confirmation(models.Model):
     class Meta:
         verbose_name = _('Viveum Confirmation')
 
-    shopper_id = models.IntegerField(
+    order = models.ForeignKey(Order,
         verbose_name=_('Unique identifier for submitted payments'))
-    vendor_comment = models.TextField(null=True, blank=True,
-        verbose_name=_('Additional comments from the vendor'))
-    ret_booknr = models.CharField(max_length=63,
-        verbose_name=_('IPayments internal booking number'))
-    ret_errorcode = models.IntegerField()
-    trx_paymentmethod = models.CharField(max_length=63)
-    ret_trx_number = models.CharField(max_length=63)
-    ret_transdatetime = models.DateTimeField()
-    ret_ip = models.IPAddressField(
-        verbose_name=_('The clients IP address'))
-    trx_typ = models.CharField(max_length=63)
-    addr_name = models.CharField(max_length=63, verbose_name=_('Cardholder name'))
-    trx_amount = CurrencyField()
-    trx_remoteip_country = models.CharField(blank=True, max_length=2)
-    trx_currency = models.CharField(max_length=4)
-    ret_authcode = models.CharField(blank=True, max_length=63)
-    trx_paymenttyp = models.CharField(max_length=63)
-    ret_status = models.CharField(max_length=63)
-    trxuser_id = models.IntegerField()
+    status = models.IntegerField(
+        verbose_name=_('The PSP\'s return status'))
+    acceptance = models.CharField(max_length=20,
+        verbose_name=_('Acquirer\'s acceptance (authorisation) code.'))
+    payid = models.IntegerField(
+        verbose_name=_('The PSP\'s unique transaction reference.'))
+    merchant_comment = models.TextField(null=True, blank=True,
+        verbose_name=_('Additional comments from the merchant'))
+    ncerror = models.IntegerField(
+        verbose_name=_('The PSP\'s error code'))
+    cn = models.CharField(max_length=255,
+        verbose_name=_('Card holder (customer) name'))
+    amount = CurrencyField()
+    ipcty = models.CharField(blank=True, max_length=2,
+        verbose_name=_('Originating country of the IP address'))
+    currency = models.CharField(max_length=4,
+        verbose_name=_('Currency of the transaction'))
+    cardno = models.CharField(max_length=24,
+        verbose_name=_('The last 4 digits of the customers credit card number'))

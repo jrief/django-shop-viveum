@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-import time
 import httplib
 import httplib2
 import urllib
 import urlparse
+from pyquery.pyquery import PyQuery
+#from lxml import etree
 import random
 from decimal import Decimal
 from django.contrib.sites.models import Site
@@ -23,6 +24,7 @@ from testapp.models import DiaryProduct
 
 class ViveumTest(LiveServerTestCase):
     def setUp(self):
+        self.save_received_data = settings.DEBUG  # leave a hard copy of the html sources received from the PSP
         current_site = Site.objects.get(id=settings.SITE_ID)
         current_site.domain = settings.HOST_NAME
         current_site.save()
@@ -43,8 +45,8 @@ class ViveumTest(LiveServerTestCase):
         self._create_cart()
         self._go_shopping()
 
-#    def tearDown(self):
-#        time.sleep(10)  # this keeps the server running for a while
+    def tearDown(self):
+        pass
 
     def _create_cart(self):
         self.product = DiaryProduct(isbn='1234567890', number_of_pages=100)
@@ -52,7 +54,7 @@ class ViveumTest(LiveServerTestCase):
         self.product.slug = 'test'
         self.product.short_description = 'test'
         self.product.long_description = 'test'
-        self.product.unit_price = Decimal('1.0')
+        self.product.unit_price = Decimal('1.23')
         self.product.save()
         self.cart = get_or_create_cart(self.request, True)
         self.cart.add_product(self.product, 1)
@@ -140,9 +142,9 @@ class ViveumTest(LiveServerTestCase):
         order_id = random.randint(100001, 999999)
         Order.objects.create(id=order_id, status=Order.CANCELLED)
 
-    def test_payment(self):
+    def _send_transaction_data(self):
         """
-        Simulate a payment to Viveum's payment processor.
+        Send data fields for the current transaction to our PSP using method POST.
         """
         form_dict = self.viveum_backend._get_form_dict(self.request)
         urlencoded = urllib.urlencode(form_dict)
@@ -151,7 +153,65 @@ class ViveumTest(LiveServerTestCase):
         url = settings.VIVEUM_PAYMENT.get('ORDER_STANDARD_URL')
         httpresp, content = conn.request(url, method='POST', body=urlencoded,
             headers={'Content-type': 'application/x-www-form-urlencoded'})
-        f = open('viveum-response.tmp.html', 'w')
-        f.write(content)
-        f.close()
-        print httpresp.status
+        self.assertEqual(httpresp.status, 200, 'PSP failed to answer with HTTP code 200')
+        return content
+
+    def _credit_card_payment(self, htmlsource, cc_number):
+        """
+        Our PSP returned an HTML page containing a form with hidden input fields
+        and with text fields to enter the credit card number. Use these fields
+        to simulate a POST request which actually performes the payment.
+        """
+        dom = PyQuery(htmlsource)
+        elements = dom('input[type=hidden]')
+        self.assertTrue(elements, 'No hidden input fields found in form')
+        elements.extend(dom('input[name=Ecom_Payment_Card_Name]'))
+        values = dict((elem.name, elem.value) for elem in elements)
+        values.update({
+            'Ecom_Payment_Card_Number': cc_number,
+            'Ecom_Payment_Card_ExpDate_Month': '12',
+            'Ecom_Payment_Card_ExpDate_Year': '2029',
+            'Ecom_Payment_Card_Verification': '123',
+        })
+        form = dom('form[name=OGONE_CC_FORM]')
+        urlencoded = urllib.urlencode(values)
+        print urlencoded
+        conn = httplib2.Http(disable_ssl_certificate_validation=True)
+        url = form.attr('action')
+        httpresp, content = conn.request(url, method='POST', body=urlencoded,
+            headers={'Content-type': 'application/x-www-form-urlencoded'})
+        self.assertEqual(httpresp.status, 200, 'PSP failed to answer with HTTP code 200')
+        return content
+
+    def _extract_redirection_path(self, htmlsource):
+        dom = PyQuery(htmlsource)
+        form = dom('table table form')
+        self.assertTrue(form, 'Redirect form not found in DOM')
+        return urlparse.urlparse(form.attr('action'))
+
+    def _return_success_view(self, htmlsource):
+        urlobj = self._extract_redirection_path(htmlsource)
+        self.assertEqual(urlobj.path, reverse('viveum_accept'))
+        data = dict(urlparse.parse_qsl(urlobj.query))
+        httpresp = self.client.get(urlobj.path, data, follow=True)
+        self.assertEqual(len(httpresp.redirect_chain), 1, 'No redirection after receiving payment status')
+        urlobj = urlparse.urlparse(httpresp.redirect_chain[0][0])
+        self.assertEqual(httpresp.status_code, 200, 'Merchant failed to finish payment receivement')
+        self.assertEqual(resolve(urlobj.path).url_name, 'thank_you_for_your_order')
+
+    def test_visa_payment(self):
+        payment_form = self._send_transaction_data()
+        self._save_htmlsource('payment_form', payment_form)
+        authorized_form = self._credit_card_payment(payment_form, '4111111111111111')
+        self._save_htmlsource('authorized_form', authorized_form)
+        self._return_success_view(authorized_form)
+        order = Order.objects.get(pk=self.order.id)
+        # TODO: self.assertEqual(order.status, Order.COMPLETED)
+        confirmation = Confirmation.objects.get(order__pk=self.order.id)
+        self.assertTrue(str(confirmation.status).startswith('5'))
+
+    def _save_htmlsource(self, name, htmlsource):
+        if self.save_received_data:
+            f = open('psp-%s.tmp.html' % name, 'w')
+            f.write(htmlsource)
+            f.close()
