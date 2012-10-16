@@ -45,7 +45,7 @@ class ViveumTest(LiveServerTestCase):
         self._go_shopping()
 
     def tearDown(self):
-        time.sleep(2)  # this keeps the live test server running for a while
+        time.sleep(10)  # this keeps the live test server running for a while
 
     def _create_cart(self):
         self.product = DiaryProduct(isbn='1234567890', number_of_pages=100)
@@ -184,7 +184,13 @@ class ViveumTest(LiveServerTestCase):
             f.write(htmlsource)
             f.close()
 
-    def x_test_visa_payment(self):
+    def test_visa_payment(self):
+        """
+        With a valid credit card number, the payment is accepted.
+        The payment module creates a confirmation object, which declares this
+        payment as successful. The corresponding order object is set to status
+        COMPLETED.
+        """
         payment_form = self._send_transaction_data()
         self._save_htmlsource('payment_form', payment_form)
         authorized_form = self._credit_card_payment(payment_form, '4111111111111111')
@@ -199,7 +205,8 @@ class ViveumTest(LiveServerTestCase):
     def test_declined_payment(self):
         """
         With an invalid credit card number, the payment is declined.
-        The payment module does not receive
+        The payment module creates a confirmation object, which cancels this
+        payment.
         """
         payment_form = self._send_transaction_data()
         self._save_htmlsource('payment_form', payment_form)
@@ -210,5 +217,6 @@ class ViveumTest(LiveServerTestCase):
         self.assertEqual(confirmation.brand, 'VISA')
         self.assertTrue(str(confirmation.status).startswith('1'))
 
-    def x_test_wait(self):
-        time.sleep(200)  # this keeps the live test server running for a while
+    def test_template(self):
+        httpresp = self.client.get(reverse('viveum_template'))
+        self.assertContains(httpresp, '$$$PAYMENT ZONE$$$')

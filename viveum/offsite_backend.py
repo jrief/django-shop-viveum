@@ -11,6 +11,7 @@ from django.core.urlresolvers import reverse
 from django.core.exceptions import SuspiciousOperation, ValidationError
 from django.shortcuts import render_to_response
 from django.contrib.auth.models import AnonymousUser
+from django.views.generic import TemplateView
 from django.template import RequestContext
 from django.http import HttpResponse, HttpResponseRedirect, \
     HttpResponseBadRequest, HttpResponseServerError
@@ -40,13 +41,13 @@ class OffsiteViveumBackend(object):
     def __init__(self, shop):
         self.shop = shop
         self.logger = logging.getLogger(__name__)
-        #self.CONFIRMATION_PARAMETERS = [f.name for f in Confirmation._meta.fields]
         assert type(settings.VIVEUM_PAYMENT).__name__ == 'dict', \
             "You need to configure a VIVEUM_PAYMENT dictionary in settings"
 
     def get_urls(self):
         urlpatterns = patterns('',
             url(r'^$', self.view_that_asks_for_money, name='viveum'),
+            url(r'^template.html$', TemplateView.as_view(template_name='payment_zone.html'), name='viveum_template'),
             url(r'^accept$', self.return_success_view, {'origin': 'acquirer'}, name='viveum_accept'),
             url(r'^decline$', self.return_decline_view, {'origin': 'acquirer'}, name='viveum_decline'),
             url(r'^viveum-confirm$', self.return_success_view, {'origin': 'acquirer'}, name='viveum_confirm'),
@@ -88,7 +89,7 @@ class OffsiteViveumBackend(object):
             'CN': getattr(billing_address, 'name', ''),
             'COM': settings.VIVEUM_PAYMENT.get('ORDER_DESCRIPTION', '') % order.id,
             'EMAIL': email,
-            'TP': settings.VIVEUM_PAYMENT.get('TP', ''),
+            'TP': url_scheme % (domain, reverse('viveum_template')),
             'OWNERZIP': getattr(billing_address, 'zip_code', ''),
             'OWNERADDRESS': getattr(billing_address, 'address', ''),
             'OWNERADDRESS2': getattr(billing_address, 'address2', ''),
@@ -112,7 +113,6 @@ class OffsiteViveumBackend(object):
         return hashlib.sha1(''.join(values)).hexdigest().upper()
 
     def _receive_confirmation(self, request, origin):
-        print 'origin=%s' % origin
         query_dict = dict((key.lower(), value) for key, value in request.GET.iteritems())
         query_dict.update({
             'order': query_dict.get('orderid', 0),
