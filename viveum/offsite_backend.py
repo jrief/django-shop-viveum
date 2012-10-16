@@ -8,7 +8,7 @@ from django.conf import settings
 from django.conf.urls.defaults import patterns, url
 from django.contrib.sites.models import get_current_site
 from django.core.urlresolvers import reverse
-from django.core.exceptions import SuspiciousOperation
+from django.core.exceptions import SuspiciousOperation, ValidationError
 from django.shortcuts import render_to_response
 from django.contrib.auth.models import AnonymousUser
 from django.template import RequestContext
@@ -17,7 +17,7 @@ from django.http import HttpResponse, HttpResponseRedirect, \
 from django.views.decorators.csrf import csrf_exempt
 from shop.util.address import get_billing_address_from_request
 from forms import OrderStandardForm, ConfirmationForm
-from models import Confirmation, Order
+from models import Confirmation
 
 
 class OffsiteViveumBackend(object):
@@ -25,13 +25,13 @@ class OffsiteViveumBackend(object):
     Glue code to let django-SHOP talk to the Viveum backend.
     '''
     backend_name = url_namespace = 'viveum'
-    SHA_IN_PARAMETERS = set(('AMOUNT', 'BRAND', 'CURRENCY', 'CN', 'EMAIL',
+    SHA_IN_PARAMETERS = set(('AMOUNT', 'BRAND', 'CURRENCY', 'CN', 'EMAIL', 'TP',
         'LANGUAGE', 'ORDERID', 'PSPID', 'TITLE', 'PM', 'OWNERZIP', 'OWNERADDRESS',
         'OWNERADDRESS2', 'OWNERTOWN', 'OWNERCTY', 'ACCEPTURL', 'DECLINEURL',
-        'EXCEPTIONURL', 'CANCELURL'))
+        'EXCEPTIONURL', 'CANCELURL', 'COM'))
     SHA_OUT_PARAMETERS = set(('ACCEPTANCE', 'AMOUNT', 'CARDNO', 'CN', 'CURRENCY',
-         'IP','NCERROR', 'ORDERID', 'PAYID', 'STATUS'))
-    CONFIRMATION_PARAMETERS = [f.name for f in Confirmation._meta.fields]
+         'IP', 'NCERROR', 'ORDERID', 'PAYID', 'STATUS', 'BRAND'))
+    CONFIRMATION_PARAMETERS = [f.name for f in Confirmation.get_meta_fields()]
 
     #===========================================================================
     # Defined by the backends API
@@ -47,8 +47,10 @@ class OffsiteViveumBackend(object):
     def get_urls(self):
         urlpatterns = patterns('',
             url(r'^$', self.view_that_asks_for_money, name='viveum'),
-            url(r'^accept$', self.return_success_view, name='viveum_accept'),
-            url(r'^decline$', self.return_decline_view, name='viveum_decline'),
+            url(r'^accept$', self.return_success_view, {'origin': 'acquirer'}, name='viveum_accept'),
+            url(r'^decline$', self.return_decline_view, {'origin': 'acquirer'}, name='viveum_decline'),
+            url(r'^viveum-confirm$', self.return_success_view, {'origin': 'acquirer'}, name='viveum_confirm'),
+            url(r'^viveum-cancel$', self.return_decline_view, {'origin': 'acquirer'}, name='viveum_cancel'),
         )
         return urlpatterns
 
@@ -84,7 +86,9 @@ class OffsiteViveumBackend(object):
             'ORDERID': order.id,
             'AMOUNT': int(self.shop.get_order_total(order) * 100),
             'CN': getattr(billing_address, 'name', ''),
+            'COM': settings.VIVEUM_PAYMENT.get('ORDER_DESCRIPTION', '') % order.id,
             'EMAIL': email,
+            'TP': settings.VIVEUM_PAYMENT.get('TP', ''),
             'OWNERZIP': getattr(billing_address, 'zip_code', ''),
             'OWNERADDRESS': getattr(billing_address, 'address', ''),
             'OWNERADDRESS2': getattr(billing_address, 'address2', ''),
@@ -107,64 +111,74 @@ class OffsiteViveumBackend(object):
         values = ['%s=%s%s' % (key.upper(), form_dict.get(key), passphrase) for key in sha_parameters]
         return hashlib.sha1(''.join(values)).hexdigest().upper()
 
+    def _receive_confirmation(self, request, origin):
+        print 'origin=%s' % origin
+        query_dict = dict((key.lower(), value) for key, value in request.GET.iteritems())
+        query_dict.update({
+            'order': query_dict.get('orderid', 0),
+            'origin': origin,
+        })
+        confirmation = ConfirmationForm(query_dict)
+        if confirmation.is_valid():
+            confirmation.save()
+        else:
+            raise ValidationError('Confirmation sent by PSP did not validate: %s' % confirmation.errors)
+        shaoutsign = self._get_sha_sign(query_dict, self.SHA_OUT_PARAMETERS,
+                        settings.VIVEUM_PAYMENT.get('SHA1_OUT_SIGNATURE'))
+        if shaoutsign != confirmation.cleaned_data['shasign']:
+            raise SuspiciousOperation('Confirm redirection by PSP has a divergent SHA1 signature')
+        self.logger.info('PSP redirected client with status %s for order %s',
+            confirmation.cleaned_data['status'], confirmation.cleaned_data['orderid'])
+        return confirmation
+
     #===========================================================================
     # Handlers, which process GET redirects initiated by IPayment
     #===========================================================================
 
-    def return_success_view(self, request):
+    def return_success_view(self, request, origin):
         """
-        The view the customer is redirected to from the IPayment server after a
-        successful payment.
-        This view is called after 'payment_was_successful' has been called, so
-        the confirmation of the payment is always available here.
+        The view the customer is redirected to from the PSP after he performed
+        a successful payment.
         """
         if request.method != 'GET':
             return HttpResponseBadRequest('Request method %s not allowed here' %
                                           request.method)
         try:
-            query_dict = dict((key.lower(), value) for key, value in request.GET.iteritems())
-            query_dict['order'] = query_dict['orderid']
-            confirmation = ConfirmationForm(query_dict)
-            if confirmation.is_valid():
-                print 'confirmation is valid: %s' % confirmation.cleaned_data
-            else:
-                print confirmation.errors
-            shaoutsign = self._get_sha_sign(query_dict, self.SHA_OUT_PARAMETERS, settings.VIVEUM_PAYMENT.get('SHA1_OUT_SIGNATURE'))
-            if shaoutsign != confirmation.cleaned_data['shasign']:
-                raise SuspiciousOperation('Confirm redirection by PSP has a divergent SHA1 signature')
-            orderid = int(request.GET.get('orderID'))
-            order = Order.objects.get(pk=orderid)
-            status = request.GET.get('STATUS')
-            self.logger.info('PSP redirected client with status %s for order %s', 
-                confirmation.cleaned_data['status'], confirmation.cleaned_data['orderid'])
-            if not status.startswith('5'):
+            confirmation = self._receive_confirmation(request, origin)
+            if not str(confirmation.cleaned_data['status']).startswith('5'):
                 return HttpResponseRedirect(self.shop.get_cancel_url())
-            cfmnattrs = { 'order': order }
-            for key, value in request.GET.iteritems():
-                key = key.lower()
-                if key in self.CONFIRMATION_PARAMETERS:
-                    cfmnattrs[key] = value
-            Confirmation.objects.get_or_create(**cfmnattrs)
-            self.shop.confirm_payment(order, request.GET.get('amount'),
-                request.GET.get('PAYID'), self.backend_name)
+            self.shop.confirm_payment(confirmation.cleaned_data['order'],
+                confirmation.cleaned_data['amount'],
+                confirmation.cleaned_data['payid'], self.backend_name)
             return HttpResponseRedirect(self.shop.get_finished_url())
         except Exception as exception:
-            # since this response is sent to IPayment, catch errors locally
+            # since this response is sent back to the PSP, catch errors locally
             logging.error('%s while performing request %s' % (exception.__str__(), request))
             traceback.print_exc()
             return HttpResponseServerError('Internal error in ' + __name__)
 
-    def return_decline_view(self, request):
+    def return_decline_view(self, request, origin):
         """
         The view the customer is redirected to from the IPayment server after a
         successful payment.
         This view is called after 'payment_was_successful' has been called, so
         the confirmation of the payment is always available here.
         """
-        print "return_decline_view"
+        # orderID=867515&currency=EUR&amount=1%2E23&ACCEPTANCE=&STATUS=1&CARDNO=XXXXXXXXXXXX3333&CN=John+Doe&PAYID=17186499&NCERROR=30001001&BRAND=VISA&IP=194%2E166%2E162%2E210&SHASIGN=7C73D6A079E2BFD3B903E42FDE2D9DD52453526C
+        if request.method != 'GET':
+            return HttpResponseBadRequest('Request method %s not allowed here' %
+                                          request.method)
+        try:
+            self._receive_confirmation(request, origin)
+            return HttpResponseRedirect(self.shop.get_cancel_url())
+        except Exception as exception:
+            # since this response is sent back to the PSP, catch errors locally
+            logging.error('%s while performing request %s' % (exception.__str__(), request))
+            traceback.print_exc()
+            return HttpResponseServerError('Internal error in ' + __name__)
 
     #===========================================================================
-    # Handlers, which process POST data from IPayment
+    # Handlers, which process the confirmation request sent by the PSP
     #===========================================================================
 
     @csrf_exempt
@@ -178,8 +192,6 @@ class OffsiteViveumBackend(object):
         if request.method != 'POST':
             return HttpResponseBadRequest()
         try:
-            if settings.IPAYMENT['checkOriginatingIP']:
-                self._check_originating_ipaddr(request)
             post = request.POST.copy()
             if 'trx_amount' in post:
                 post['trx_amount'] = (Decimal(post['trx_amount']) / Decimal('100')) \
@@ -208,32 +220,3 @@ class OffsiteViveumBackend(object):
             logging.error(exception.__str__())
             traceback.print_exc()
             return HttpResponseServerError('Internal error in ' + __name__)
-
-    def _check_originating_ipaddr(self, request):
-        """
-        Check that the request is coming from a trusted source. A list of
-        allowed sources is hard coded into this module.
-        If the software is operated behind a proxy, instead of using the remote
-        IP address, the HTTP-header HTTP_X_FORWARDED_FOR is evaluated against
-        the list of allowed sources.
-        """
-        # TODO: use request.get_host()
-        originating_ip = request.META['REMOTE_ADDR']
-        if settings.IPAYMENT['reverseProxies'].count(originating_ip):
-            if 'HTTP_X_FORWARDED_FOR' in request.META:
-                forged = True
-                for client in request.META['HTTP_X_FORWARDED_FOR'].split(','):
-                    if self.ALLOWED_CONFIRMERS.count(client):
-                        forged = False
-                        originating_ip = client
-                        break
-                if forged:
-                    raise SuspiciousOperation('Request invoked from suspicious IP address %s'
-                                    % request.META['HTTP_X_FORWARDED_FOR'])
-            else:
-                logging.warning('Allowed proxy servers are declared, but header HTTP_X_FORWARDED_FOR is missing')
-        elif not self.ALLOWED_CONFIRMERS.count(originating_ip):
-            raise SuspiciousOperation('Request invoked from suspicious IP address %s'
-                                      % originating_ip)
-        self.logger.debug('POST data received from IPayment[%s]: %s.'
-                          % (originating_ip, request.POST.__str__()))

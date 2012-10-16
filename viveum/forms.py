@@ -5,12 +5,12 @@ from viveum.models import Confirmation
 
 class OrderStandardForm(forms.Form):
     """
-    Form used to transfer hidden data from the shop to Viveum.
+    Form used to transfer hidden data from the shop to the PSP.
     """
     def __init__(self, *args, **kwargs):
         initial = kwargs.pop('initial')
         super(OrderStandardForm, self).__init__(*args, **kwargs)
-        for field, value in initial.iteritems:
+        for field, value in initial.iteritems():
             self.fields[field] = forms.CharField(widget=forms.HiddenInput, initial=value)
 
 
