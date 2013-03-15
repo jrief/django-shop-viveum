@@ -5,6 +5,8 @@ from pyquery.pyquery import PyQuery
 def what_is_my_ip():
     """
     Return the remote IP address as seen by the outside world.
+    This function uses a service as found here: http://findwhatismyipaddress.org/
+    Run ```python utils.py``` to test this service.
     """
     conn = httplib2.Http()
     httpresp, content = conn.request('http://findwhatismyipaddress.org/', method='GET')
