@@ -47,16 +47,12 @@ class ViveumTest(LiveServerTestCase):
     def tearDown(self):
         time.sleep(10)  # this keeps the live test server running for a while
 
-    def _create_cart(self):
-        self.product = DiaryProduct(isbn='1234567890', number_of_pages=100)
-        self.product.name = 'test'
-        self.product.slug = 'test'
-        self.product.short_description = 'test'
-        self.product.long_description = 'test'
-        self.product.unit_price = Decimal('1.23')
-        self.product.save()
+    def add_product_to_cart(self):
+        product = DiaryProduct(isbn='1234567890', number_of_pages=100, name='test',
+            slug='test', active=True, unit_price=Decimal('1.23'))
+        product.save()
         self.cart = get_or_create_cart(self.request, True)
-        self.cart.add_product(self.product, 1)
+        self.cart.add_product(product, 1)
         self.cart.save()
 
     def _go_shopping(self):
