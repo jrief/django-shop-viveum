@@ -1,6 +1,6 @@
-from django.conf.urls.defaults import patterns, include
+from django.conf.urls.defaults import url, patterns, include
 
 
 urlpatterns = patterns('',
-    (r'^shop/', include('shop.urls')),
+    url(r'^shop/', include('shop.urls')),
 )
