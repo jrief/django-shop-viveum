@@ -27,7 +27,7 @@ class ViveumTest(LiveServerTestCase):
         current_site = Site.objects.get(id=settings.SITE_ID)
         current_site.domain = settings.HOST_NAME
         current_site.save()
-        self._create_fake_order()
+        self.create_fake_order()
         self.viveum_backend = backends_pool.get_payment_backends_list()[0]
         self.factory = RequestFactory()
         self.request = Mock()
@@ -41,8 +41,8 @@ class ViveumTest(LiveServerTestCase):
         self.country_usa.save()
         self.client = Client()
         self.client.login(username='test', password='123')
-        self._create_cart()
-        self._go_shopping()
+        self.add_product_to_cart()
+        self.checkout()
 
     def tearDown(self):
         time.sleep(10)  # this keeps the live test server running for a while
@@ -55,9 +55,9 @@ class ViveumTest(LiveServerTestCase):
         self.cart.add_product(product, 1)
         self.cart.save()
 
-    def _go_shopping(self):
+    def checkout(self):
         # add address information
-        post = {
+        post_data = {
             'ship-name': 'John Doe',
             'ship-address': 'Rosestreet',
             'ship-address2': '',
@@ -75,14 +75,14 @@ class ViveumTest(LiveServerTestCase):
             'shipping_method': 'flat',
             'payment_method': 'viveum',
         }
-        response = self.client.post(reverse('checkout_selection'), post, follow=True)
+        response = self.client.post(reverse('checkout_selection'), post_data, follow=True)
         urlobj = urlparse.urlparse(response.redirect_chain[0][0])
         self.assertEqual(resolve(urlobj.path).url_name, 'checkout_shipping')
         urlobj = urlparse.urlparse(response.redirect_chain[1][0])
         self.assertEqual(resolve(urlobj.path).url_name, 'flat')
         self.order = self.viveum_backend.shop.get_order(self.request)
 
-    def _create_fake_order(self):
+    def create_fake_order(self):
         """
         Create a fake order with a random order id, so that the following real
         order does not start with 1. Otherwise this could cause errors if this
@@ -91,7 +91,7 @@ class ViveumTest(LiveServerTestCase):
         order_id = random.randint(100001, 999999)
         Order.objects.create(id=order_id, status=Order.CANCELLED)
 
-    def _send_transaction_data(self):
+    def send_transaction_data(self):
         """
         Send data fields for the current transaction to the PSP using method POST.
         """
@@ -104,7 +104,7 @@ class ViveumTest(LiveServerTestCase):
         self.assertEqual(httpresp.status, 200, 'PSP failed to answer with HTTP code 200')
         return content
 
-    def _credit_card_payment(self, htmlsource, cc_number):
+    def credit_card_payment(self, htmlsource, cc_number):
         """
         Our PSP returned an HTML page containing a form with hidden input fields
         and with text fields to enter the credit card number. Use these fields
@@ -130,14 +130,14 @@ class ViveumTest(LiveServerTestCase):
         self.assertEqual(httpresp.status, 200, 'PSP failed to answer with HTTP code 200')
         return content
 
-    def _extract_redirection_path(self, htmlsource):
+    def extract_redirection_path(self, htmlsource):
         dom = PyQuery(htmlsource)
         form = dom('table table form')
         self.assertTrue(form, 'Redirect form not found in DOM')
         return urlparse.urlparse(form.attr('action'))
 
-    def _process_success_view(self, htmlsource):
-        urlobj = self._extract_redirection_path(htmlsource)
+    def process_success_view(self, htmlsource):
+        urlobj = self.extract_redirection_path(htmlsource)
         self.assertEqual(urlobj.path, reverse('viveum_accept'))
         data = dict(urlparse.parse_qsl(urlobj.query))
         httpresp = self.client.get(urlobj.path, data, follow=True)
@@ -146,7 +146,7 @@ class ViveumTest(LiveServerTestCase):
         self.assertEqual(httpresp.status_code, 200, 'Merchant failed to finish payment receivement')
         self.assertEqual(resolve(urlobj.path).url_name, 'thank_you_for_your_order')
 
-    def _process_decline_view(self, htmlsource):
+    def process_decline_view(self, htmlsource):
         dom = PyQuery(htmlsource)
         form = dom('#form3')
         self.assertTrue(form, 'No <form id="#form1"> found in html output')
@@ -159,7 +159,7 @@ class ViveumTest(LiveServerTestCase):
         httpresp, content = conn.request(url, method='POST', body=urlencoded,
             headers={'Content-type': 'application/x-www-form-urlencoded'})
         self.assertEqual(httpresp.status, 200, 'PSP did not accept payment cancellation')
-        self._save_htmlsource('decline_form', content)
+        self.save_htmlsource('decline_form', content)
         # in response check for string 'Cancelled'
         dom = PyQuery(content)
         tables = dom('table.ncoltable1')
@@ -174,7 +174,7 @@ class ViveumTest(LiveServerTestCase):
         self.assertEqual(httpresp.status_code, 200)
         self.assertEqual(resolve(urlobj.path).url_name, 'viveum')
 
-    def _save_htmlsource(self, name, htmlsource):
+    def save_htmlsource(self, name, htmlsource):
         if self.save_received_data:
             f = open('psp-%s.tmp.html' % name, 'w')
             f.write(htmlsource)
@@ -187,11 +187,11 @@ class ViveumTest(LiveServerTestCase):
         payment as successful. The corresponding order object is set to status
         COMPLETED.
         """
-        payment_form = self._send_transaction_data()
-        self._save_htmlsource('payment_form', payment_form)
-        authorized_form = self._credit_card_payment(payment_form, '4111111111111111')
-        self._save_htmlsource('authorized_form', authorized_form)
-        self._process_success_view(authorized_form)
+        payment_form = self.send_transaction_data()
+        self.save_htmlsource('payment_form', payment_form)
+        authorized_form = self.credit_card_payment(payment_form, '4111111111111111')
+        self.save_htmlsource('authorized_form', authorized_form)
+        self.process_success_view(authorized_form)
         order = Order.objects.get(pk=self.order.id)  # Our order
         self.assertEqual(order.status, Order.COMPLETED)
         confirmation = Confirmation.objects.get(order__pk=self.order.id)  # The PSP's confirmation
@@ -204,11 +204,11 @@ class ViveumTest(LiveServerTestCase):
         The payment module creates a confirmation object, which cancels this
         payment.
         """
-        payment_form = self._send_transaction_data()
-        self._save_htmlsource('payment_form', payment_form)
-        authorized_form = self._credit_card_payment(payment_form, '4111113333333333')
-        self._save_htmlsource('authorized_form', authorized_form)
-        self._process_decline_view(authorized_form)
+        payment_form = self.send_transaction_data()
+        self.save_htmlsource('payment_form', payment_form)
+        authorized_form = self.credit_card_payment(payment_form, '4111113333333333')
+        self.save_htmlsource('authorized_form', authorized_form)
+        self.process_decline_view(authorized_form)
         confirmation = Confirmation.objects.get(order__pk=self.order.id)  # The PSP's confirmation
         self.assertEqual(confirmation.brand, 'VISA')
         self.assertTrue(str(confirmation.status).startswith('1'))
