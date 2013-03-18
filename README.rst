@@ -21,6 +21,12 @@ Clone this module from github::
 
 and move or link the sub-directory 'viveum' into your projects path.
 
+Unfortunately there is a still unresolved issue with SSL on httplib2. Therefore you
+must make some modifications on httplib2. Install version 0.7.6 and apply the patch
+file as found in docs::
+
+    patch -p1 < docs/httplib2-0.7.6-ssl.patch 
+
 Configuration
 =============
 

@@ -47,7 +47,7 @@ class OffsiteViveumBackend(object):
     def get_urls(self):
         urlpatterns = patterns('',
             url(r'^$', self.view_that_asks_for_money, name='viveum'),
-            url(r'^template.html$', TemplateView.as_view(template_name='payment_zone.html'), name='viveum_template'),
+            url(r'^template.html$', TemplateView.as_view(template_name='viveum/payment_zone.html'), name='viveum_template'),
             url(r'^accept$', self.return_success_view, {'origin': 'acquirer'}, name='viveum_accept'),
             url(r'^decline$', self.return_decline_view, {'origin': 'acquirer'}, name='viveum_decline'),
             url(r'^viveum-confirm$', self.return_success_view, {'origin': 'acquirer'}, name='viveum_confirm'),
@@ -63,12 +63,13 @@ class OffsiteViveumBackend(object):
         """
         Show this form to ask the customer to proceed for payment at Viveum.
         """
-        form = OrderStandardForm(initial=self._get_form_dict(request))
-        context = {"form": form}
-        rc = RequestContext(request, context)
-        return render_to_response('payment.html', rc)
+        form_dict = self.get_form_dict(request)
+        self.sign_form_dict(form_dict)
+        order_form = OrderStandardForm(initial=form_dict)
+        request_context = RequestContext(request, {'order_form': order_form})
+        return render_to_response('viveum/order_form.html', request_context)
 
-    def _get_form_dict(self, request):
+    def get_form_dict(self, request):
         """
         From the current order, create a dictionary to initialize a hidden form.
         """
@@ -79,7 +80,7 @@ class OffsiteViveumBackend(object):
             email = request.user.email
         url_scheme = 'https://%s%s' if request.is_secure() else 'http://%s%s'
         domain = get_current_site(request).domain
-        form_dict = {
+        return {
             'PSPID': settings.VIVEUM_PAYMENT.get('PSPID'),
             'CURRENCY': settings.VIVEUM_PAYMENT.get('CURRENCY'),
             'LANGUAGE': settings.VIVEUM_PAYMENT.get('LANGUAGE'),
@@ -98,9 +99,11 @@ class OffsiteViveumBackend(object):
             'ACCEPTURL': url_scheme % (domain, reverse('viveum_accept')),
             'DECLINEURL': url_scheme % (domain, reverse('viveum_decline')),
         }
-        form_dict['SHASIGN'] = self._get_sha_sign(form_dict, self.SHA_IN_PARAMETERS,
-                                settings.VIVEUM_PAYMENT.get('SHA1_IN_SIGNATURE'))
-        return form_dict
+
+    def sign_form_dict(self, form_dict):
+        form_dict['SHASIGN'] = self._get_sha_sign(form_dict,
+            self.SHA_IN_PARAMETERS,
+            settings.VIVEUM_PAYMENT.get('SHA1_IN_SIGNATURE'))
 
     def _get_sha_sign(self, form_dict, parameters, passphrase):
         """

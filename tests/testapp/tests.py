@@ -95,7 +95,8 @@ class ViveumTest(LiveServerTestCase):
         """
         Send data fields for the current transaction to the PSP using method POST.
         """
-        form_dict = self.viveum_backend._get_form_dict(self.request)
+        form_dict = self.viveum_backend.get_form_dict(self.request)
+        self.viveum_backend.sign_form_dict(form_dict)
         urlencoded = urllib.urlencode(form_dict)
         conn = httplib2.Http(disable_ssl_certificate_validation=True)
         url = settings.VIVEUM_PAYMENT.get('ORDER_STANDARD_URL')

@@ -9,6 +9,7 @@ class OrderStandardForm(forms.Form):
     """
     def __init__(self, *args, **kwargs):
         initial = kwargs.pop('initial')
+        kwargs['auto_id'] = False
         super(OrderStandardForm, self).__init__(*args, **kwargs)
         for field, value in initial.iteritems():
             self.fields[field] = forms.CharField(widget=forms.HiddenInput, initial=value)
