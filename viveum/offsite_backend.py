@@ -135,7 +135,7 @@ class OffsiteViveumBackend(object):
         return confirmation
 
     #===========================================================================
-    # Handlers, which process GET redirects initiated by IPayment
+    # Handlers which process GET redirects initiated by the PSP
     #===========================================================================
 
     def return_success_view(self, request, origin):
