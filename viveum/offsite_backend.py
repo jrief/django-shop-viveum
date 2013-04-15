@@ -99,7 +99,7 @@ class OffsiteViveumBackend(object):
         form_dict = dict((key.upper(), value) for key, value in form_dict.iteritems())
         sha_parameters = sorted(parameters.intersection(form_dict.iterkeys()))
         sha_parameters = filter(lambda key: form_dict.get(key), sha_parameters)
-        values = ['%s=%s%s' % (key.upper(), form_dict.get(key), passphrase) for key in sha_parameters]
+        values = [('%s=%s%s' % (key.upper(), form_dict.get(key), passphrase)).encode('utf8') for key in sha_parameters]
         return hashlib.sha1(''.join(values)).hexdigest().upper()
 
     def _receive_confirmation(self, request, origin):
