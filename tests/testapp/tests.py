@@ -24,7 +24,7 @@ from testapp.models import DiaryProduct
 class ViveumTest(LiveServerTestCase):
     def setUp(self):
         self.save_received_data = True  # settings.DEBUG  # leave a hard copy of the html sources received from the PSP
-        current_site = Site.objects.get(id=settings.SITE_ID)
+        current_site = Site.objects.get_current()
         current_site.domain = settings.HOST_NAME
         current_site.save()
         self.create_fake_order()
