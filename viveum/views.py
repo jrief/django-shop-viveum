@@ -1,4 +1,5 @@
 #-*- coding: utf-8 -*-
+from django.conf import settings
 from django.template.loader import render_to_string
 from django.contrib.sites.models import Site
 from django.views.generic import TemplateView
@@ -21,10 +22,10 @@ class PaymentZoneView(TemplateView):
         qualified URL.
         """
         context = RequestContext(self.request)
-        for k in range(len(context.dicts)):
-            static_url = context.dicts[k].get('STATIC_URL')
-            if static_url and static_url.startswith('/'):
-                context.dicts[k] = {'STATIC_URL': 'http://%s%s' % (Site.objects.get_current().domain, static_url)}
+        if 'STATIC_URL' in settings.VIVEUM_PAYMENT:
+            for k in range(len(context.dicts)):
+                if 'STATIC_URL' in context.dicts[k]:
+                    context.dicts[k].update({'STATIC_URL': settings.VIVEUM_PAYMENT.get('STATIC_URL')})
         return context
 
     def get(self, *args, **kwargs):
