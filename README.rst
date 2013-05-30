@@ -8,11 +8,8 @@ used for credit card and other kind of payments.
 
 Currently only payment methods are implemented, which do not require a PCI DSS
 certification (https://www.pcisecuritystandards.org/) for your shop.
-This means that your shop never "sees" the credit card numbers.
-With this module your customer "leaves" your shop to enter his credit card numbers
-on the Viveum site secured by SSL. Afterwards the customer is redirected back to
-the shop using a special URL, which transports the payment confirmation using a
-signature technique.
+This means that your shop never "sees" the credit card numbers, and thus can not
+store and/or abuse it.
 
 Installation
 ============
@@ -24,7 +21,8 @@ Viveum Configuration
 ====================
 
 Get in touch with Viveum and ask for a test account. They will send you an identifier
-and a password. Use the given values and log into https://viveum.v-psp.com/ncol/test/admin_viveum.asp
+and a password. Use the given values and log into
+https://viveum.v-psp.com/ncol/test/admin_viveum.asp
 this will bring you into a old-fashioned admin environment. All the relevant settings 
 required to configure this module can be fetched from the menu item
 **Configuration > Technical information > Global security parameters**::
@@ -33,11 +31,8 @@ required to configure this module can be fetched from the menu item
     Enable JavaScript check on template: Yes
     Allow usage of static template: Yes
 
-In your local shell, generate a SHA-IN pass phrase::
-
-    $ base64 -b16 < /dev/urandom | head -n1
-
-and copy it into the given field at
+Generate a 16 digit SHA-IN and a 12 digit SHA-OUT random pass phrase (``base64``
+and ``/dev/urandom`` are your friends) and copy them into the given fields at
 **Configuration > Technical information > Data and origin verification > SHA-IN pass phrase**::
 
 **Configuration > Technical information > Transaction feedback**::
@@ -58,26 +53,7 @@ and copy it into the given field at
         PAYID
         STATUS
 
-Shop Configuration
-==================
-
-In settings.py
-
-* Add ‘viveum', to INSTALLED_APPS.
-* Add 'synthesa.payment.backends.ViveumPaymentBackend' to SHOP_PAYMENT_BACKENDS.
-* Add the configuration dictionary::
-
-    VIVEUM_PAYMENT = {
-        'ORDER_STANDARD_URL': 'https://viveum.v-psp.com/ncol/%s/orderstandard_UTF8.asp' % ('prod' if not DEBUG else 'test'),
-        'PSPID': 'your_PSPID',  # the same you use to log into https://viveum.v-psp.com/ncol/test/admin_viveum.asp
-        'ORDER_DESCRIPTION': 'Your order (%s) at Awesome Shop',
-        'SHA1_IN_SIGNATURE': 'some_hash_value',
-        'SHA1_OUT_SIGNATURE': 'some_hash_value',
-        'CURRENCY': 'EUR',
-        'LANGUAGE': 'en_EN', # 
-        'TITLE': 'Greeting at Viveum during payment',
-    }
-
+    SHA-OUT pass phrase: (as above)
 
 Test the Configuration
 ======================
@@ -85,21 +61,30 @@ Test the Configuration
 In order to run the unit tests, you must install an additional Python package,
 which is not required for normal operation::
 
-    pip install httplib2==0.7.6
+    pip install requests
 
-Unfortunately there is a still unresolved issue with SSL on httplib2. Therefore you
-must make some modifications on httplib2. Install version 0.7.6, change into your
-Python site-packages directory and apply the following patch file as found in docs::
+Unfortunately there might be an unresolved issue with SSL on requests. Please read
+docs/ssl-problem.rst for details.
 
-    patch -p0 < docs/httplib2-0.7.6-ssl.patch
-
-Change the values for VIVEUM_PAYMENT in ``tests/testapp/settings.py`` according 
-to the chosen configuration. The run ``./runtests.sh``. If everything worked fine,
-you should receive two emails, one for a successful, and one for a declined payment.
+Run ``./runtests.sh``.
+If everything worked fine, you should receive two emails, one for a successful,
+and one for a declined payment.
 If there is an error, check the error log at the Viveum admin interface.
+
+Use these settings in your shop Configuration
+=============================================
+If all tests work fine, use these tested settings for your production environment.
+
+* In Viveums admin interface, transfer your test account settings to production.
+* In your project setting.py
+  * add ``viveum``, to INSTALLED_APPS.
+  * add ``synthesa.payment.backends.ViveumPaymentBackend`` to SHOP_PAYMENT_BACKENDS.
+  * copy the content of ``tests/viveum_settings.py`` into the ``settings.py`` file of
+    your project. In dict ``VIVEUM_PAYMENT`` change 
+    ``ORDER_STANDARD_URL`` to ``https://viveum.v-psp.com/ncol/prod/orderstandard_UTF8.asp``
 
 CHANGES
 =======
 
 0.1.0
-First release to the public, which allows transaction mode 'eCommerce'.
+First release to the public.

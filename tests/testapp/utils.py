@@ -1,4 +1,4 @@
-import httplib2
+import requests
 from pyquery.pyquery import PyQuery
 
 
@@ -8,10 +8,9 @@ def what_is_my_ip():
     This function uses a service as found here: http://findwhatismyipaddress.org/
     Run ```python utils.py``` to test this service.
     """
-    conn = httplib2.Http()
-    httpresp, content = conn.request('http://findwhatismyipaddress.org/', method='GET')
-    assert(httpresp.status == 200)
-    dom = PyQuery(content)
+    response = requests.get('http://findwhatismyipaddress.org/')
+    assert(response.status_code == 200)
+    dom = PyQuery(response.content)
     elements = dom('#ipadd_n')
     assert(elements)
     td = elements('td')

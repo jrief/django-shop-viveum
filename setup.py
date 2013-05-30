@@ -26,6 +26,7 @@ setup(
     install_requires=[
         'Django>=1.4',
         'django-shop',
+        'requests',
     ],
     packages=find_packages(),
     include_package_data=True,

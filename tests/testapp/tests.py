@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-import httplib2
+import requests
 import time
-import urllib
 import urlparse
 from pyquery.pyquery import PyQuery
 import random
@@ -23,7 +22,7 @@ from testapp.models import DiaryProduct
 
 class ViveumTest(LiveServerTestCase):
     def setUp(self):
-        self.save_received_data = True  # settings.DEBUG  # leave a hard copy of the html sources received from the PSP
+        self.save_received_data = False  # if True, leave a hard copy of the html sources received from the PSP
         current_site = Site.objects.get_current()
         current_site.domain = settings.HOST_NAME
         current_site.save()
@@ -97,13 +96,10 @@ class ViveumTest(LiveServerTestCase):
         """
         form_dict = self.viveum_backend.get_form_dict(self.request)
         self.viveum_backend.sign_form_dict(form_dict)
-        urlencoded = urllib.urlencode(form_dict)
-        conn = httplib2.Http(disable_ssl_certificate_validation=True)
         url = settings.VIVEUM_PAYMENT.get('ORDER_STANDARD_URL')
-        httpresp, content = conn.request(url, method='POST', body=urlencoded,
-            headers={'Content-type': 'application/x-www-form-urlencoded'})
-        self.assertEqual(httpresp.status, 200, 'PSP failed to answer with HTTP code 200')
-        return content
+        response = requests.post(url, data=form_dict, verify=True)
+        self.assertEqual(response.status_code, 200, 'PSP failed to answer with HTTP code 200')
+        return response.content
 
     def credit_card_payment(self, htmlsource, cc_number):
         """
@@ -123,13 +119,10 @@ class ViveumTest(LiveServerTestCase):
             'Ecom_Payment_Card_Verification': '123',
         })
         form = dom('form[name=OGONE_CC_FORM]')
-        urlencoded = urllib.urlencode(values)
-        conn = httplib2.Http(disable_ssl_certificate_validation=True)
         url = form.attr('action')
-        httpresp, content = conn.request(url, method='POST', body=urlencoded,
-            headers={'Content-type': 'application/x-www-form-urlencoded'})
-        self.assertEqual(httpresp.status, 200, 'PSP failed to answer with HTTP code 200')
-        return content
+        response = requests.post(url, data=values, verify=True)
+        self.assertEqual(response.status_code, 200, 'PSP failed to answer with HTTP code 200')
+        return response.content
 
     def extract_redirection_path(self, htmlsource):
         dom = PyQuery(htmlsource)
@@ -154,15 +147,12 @@ class ViveumTest(LiveServerTestCase):
         elements = form.find('input')
         values = dict((elem.name, elem.value) for elem in elements)
         values.update({'cancel': 'Cancel'})
-        urlencoded = urllib.urlencode(values)
-        conn = httplib2.Http(disable_ssl_certificate_validation=True)
         url = form.attr('action')
-        httpresp, content = conn.request(url, method='POST', body=urlencoded,
-            headers={'Content-type': 'application/x-www-form-urlencoded'})
-        self.assertEqual(httpresp.status, 200, 'PSP did not accept payment cancellation')
-        self.save_htmlsource('decline_form', content)
+        response = requests.post(url, data=values, verify=True)
+        self.assertEqual(response.status_code, 200, 'PSP did not accept payment cancellation')
+        self.save_htmlsource('decline_form', response.content)
         # in response check for string 'Cancelled'
-        dom = PyQuery(content)
+        dom = PyQuery(response.content)
         tables = dom('table.ncoltable1')
         self.assertEqual(len(tables), 3)
         self.assertEqual(tables.eq(1).find('h3').text(), 'Cancelled')
