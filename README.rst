@@ -2,9 +2,9 @@
 django-shop-viveum
 ====================
 
-This module is a payment backend module for django-SHOP, using Viveum 
-(https://viveum.v-psp.com) as the shops payment service provider. It can be
-used for credit card and other kind of payments.
+This module is a payment backend module for django-SHOP (https://github.com/divio/django-shop),
+using Viveum (https://viveum.v-psp.com) as the shops payment service provider.
+It can be used for credit card and other kind of payments.
 
 Currently only payment methods are implemented, which do not require a PCI DSS
 certification (https://www.pcisecuritystandards.org/) for your shop.

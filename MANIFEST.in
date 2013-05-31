@@ -1,3 +1,7 @@
-include LICENSE
-include README.rst
-recursive-include ipayment/templates *
+include LICENSE.txt README.rst setup.py
+recursive-include docs *
+recursive-include viveum *.py
+recursive-include viveum/templates *.html
+include tests/manage.py
+include tests/viveum_settings_sample.py
+recursive-include tests/testapp *.py

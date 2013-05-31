@@ -10,4 +10,4 @@ build
 dist
 htmlcov
 *.tmp*
-_viveum_settings.py
+viveum_settings.py
