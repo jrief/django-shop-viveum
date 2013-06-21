@@ -81,9 +81,9 @@ try:
 except ImportError:
     print """
     -------------------------------------------------------------------------
-    You need to create a local_settings.py file which needs to contain your
-    private configurations at Viveum/Ogone.
-    Use docs/local_settings.py as a reference to start with.
+    You need to create a file tests/testapp/viveum_settings.py which needs to
+    contain your private configurations at Viveum/Ogone.
+    Use tests/testapp/viveum_settings_sample.py as a reference to start with.
     -------------------------------------------------------------------------
     """
     import sys
