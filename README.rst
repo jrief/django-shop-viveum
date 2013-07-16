@@ -57,7 +57,6 @@ and ``/dev/urandom`` are your friends) and copy them into the given fields at
 
 Test the Configuration
 ======================
-
 In order to run the unit tests, you must install an additional Python package,
 which is not required for normal operation::
 
@@ -70,6 +69,15 @@ Run ``./runtests.sh``.
 If everything worked fine, you should receive two emails, one for a successful,
 and one for a declined payment.
 If there is an error, check the error log at the Viveum admin interface.
+
+Test cards
+==========
+During manual testing, you may not want to use a real credit card number. Here are a few official
+credit card numbers for testing:
+
+* VISA: 4111111111111111 with any expiry date in the future and any 3 digit security code.
+* A number of a "stolen" card: 4111113333333333 – payment shall be refused.
+
 
 Use these settings in your shop Configuration
 =============================================
