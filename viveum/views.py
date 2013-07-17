@@ -20,16 +20,10 @@ class PaymentZoneView(TemplateView):
         $$$PAYMENT ZONE$$$ with its own HTML content.
         Thereafter the customer receives this page by Viveum, and thus images and
         style-sheets must be accessed by their full qualified URL.
-        If django-compressor is used to merge stylesheets and javascript files, disable
-        this feature for this template, since compressor can't handle external URLs.
         """
         context = RequestContext(self.request)
         self._update_context_for_urlkey(context, 'STATIC_URL')
         self._update_context_for_urlkey(context, 'MEDIA_URL')
-        if hasattr(settings, 'COMPRESS_ENABLED'):
-            for k in range(len(context.dicts)):
-                if 'COMPRESS_ENABLED' in context.dicts[k]:
-                    context.dicts[k].update(COMPRESS_ENABLED=False)
         return context
 
     def get(self, *args, **kwargs):
