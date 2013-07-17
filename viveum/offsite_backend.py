@@ -153,9 +153,8 @@ class OffsiteViveumBackend(object):
                                           request.method)
         try:
             self._receive_confirmation(request, origin)
-            return HttpResponseRedirect(self.shop.get_cancel_url())
         except Exception as exception:
             # since this response is sent back to the PSP, catch errors locally
             logging.error('%s while performing request %s' % (exception.__str__(), request))
             traceback.print_exc()
-            return HttpResponseServerError('Internal error in ' + __name__)
+        return HttpResponseRedirect(self.shop.get_cancel_url())
