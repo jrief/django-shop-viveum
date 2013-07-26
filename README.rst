@@ -6,10 +6,9 @@ This module is a payment backend module for django-SHOP (https://github.com/divi
 using Viveum (https://viveum.v-psp.com) as the shops payment service provider.
 It can be used for credit card and other kind of payments.
 
-Currently only payment methods are implemented, which do not require a PCI DSS
-certification (https://www.pcisecuritystandards.org/) for your shop.
-This means that your shop never "sees" the credit card numbers, and thus can not
-store and/or abuse it.
+Currently only payment methods are implemented, which do not require a PCI DSS certification
+(https://www.pcisecuritystandards.org/) for your shop. This means that your shop never "sees" the
+credit card numbers, and thus can not store and in consequence abuse them.
 
 Installation
 ============
@@ -23,8 +22,8 @@ Viveum Configuration
 Get in touch with Viveum and ask for a test account. They will send you an identifier
 and a password. Use the given values and log into
 https://viveum.v-psp.com/ncol/test/admin_viveum.asp
-this will bring you into a old-fashioned admin environment. All the relevant settings 
-required to configure this module can be fetched from the menu item
+this will bring you into an admin backend. All the relevant settings required to configure this
+module can be fetched from the menu item
 **Configuration > Technical information > Global security parameters**::
     Hash algorithm: SHA-1
     Character encoding: UTF-8
@@ -94,5 +93,5 @@ If all tests work fine, use these tested settings for your production environmen
 CHANGES
 =======
 
-0.1.0
-First release to the public.
+* 0.1.0: First release to the public.
+* 0.3.2: Can distinguish between return status 5 and 9 and accept both.

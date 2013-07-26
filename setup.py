@@ -15,7 +15,7 @@ setup(
     author='Jacob Rief',
     author_email='jacob.rief@gmail.com',
     name='django-shop-viveum',
-    version='0.3.1',
+    version='0.3.2',
     description='A payment backend module for django-SHOP, using Viveum (https://viveum.v-psp.com) as PSP.',
     long_description=open(os.path.join(os.path.dirname(__file__), 'README.rst')).read(),
     url='https://github.com/jrief/django-shop-viveum',

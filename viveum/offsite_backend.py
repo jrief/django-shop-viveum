@@ -131,7 +131,8 @@ class OffsiteViveumBackend(object):
                                           request.method)
         try:
             confirmation = self._receive_confirmation(request, origin)
-            if not str(confirmation.cleaned_data['status']).startswith('5'):
+            valid_return_status = settings.VIVEUM_PAYMENT.get('VALID_RETURN_STATUS', '5')
+            if not str(confirmation.cleaned_data['status']).startswith(valid_return_status):
                 return HttpResponseRedirect(self.shop.get_cancel_url())
             self.shop.confirm_payment(confirmation.cleaned_data['order'],
                 confirmation.cleaned_data['amount'],
@@ -145,8 +146,8 @@ class OffsiteViveumBackend(object):
 
     def return_decline_view(self, request, origin):
         """
-        The view the customer is redirected to from the PSP after the payment
-        was successful.
+        The view the customer is redirected to, after the payment has been declared as declined
+        as unsuccessful by the PSP .
         """
         if request.method != 'GET':
             return HttpResponseBadRequest('Request method %s not allowed here' %

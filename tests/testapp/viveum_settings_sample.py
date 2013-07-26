@@ -10,4 +10,5 @@ VIVEUM_PAYMENT = {
     'CURRENCY': 'EUR',
     'LANGUAGE': 'en_US',
     'TITLE': 'Viveum PSP Unittest',
+    'VALID_RETURN_STATUS': ('5', '9',),
 }
