@@ -5,7 +5,6 @@ import urlparse
 from pyquery.pyquery import PyQuery
 import random
 from decimal import Decimal
-from django.contrib.sites.models import Site
 from django.test import LiveServerTestCase
 from django.test.client import Client, RequestFactory
 from django.conf import settings
@@ -23,9 +22,6 @@ from testapp.models import DiaryProduct
 class ViveumTest(LiveServerTestCase):
     def setUp(self):
         self.save_received_data = False  # if True, leave a hard copy of the html sources received from the PSP
-        current_site = Site.objects.get_current()
-        current_site.domain = settings.HOST_NAME
-        current_site.save()
         self.create_fake_order()
         self.viveum_backend = backends_pool.get_payment_backends_list()[0]
         self.factory = RequestFactory()

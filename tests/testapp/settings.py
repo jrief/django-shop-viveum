@@ -1,5 +1,4 @@
 # Django settings for unit test project.
-from utils import what_is_my_ip
 
 DEBUG = True
 
@@ -15,9 +14,6 @@ DATABASES = {
 }
 
 SITE_ID = 1
-
-# The hostname of this testing server visible to the outside world
-HOST_NAME = what_is_my_ip()
 
 STATIC_URL = '/static/'
 

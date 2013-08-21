@@ -4,9 +4,9 @@ import logging
 import traceback
 from django.conf import settings
 from django.conf.urls.defaults import patterns, url
-from django.contrib.sites.models import get_current_site
+from django.contrib.sites.models import Site, RequestSite
 from django.core.urlresolvers import reverse
-from django.core.exceptions import SuspiciousOperation, ValidationError
+from django.core.exceptions import SuspiciousOperation, ValidationError, ObjectDoesNotExist
 from django.shortcuts import render_to_response
 from django.contrib.auth.models import AnonymousUser
 from django.template import RequestContext
@@ -15,6 +15,19 @@ from shop.util.address import get_billing_address_from_request
 from forms import OrderStandardForm, ConfirmationForm
 from models import Confirmation
 from views import PaymentZoneView
+
+
+def get_return_domain(request):
+    """
+    Retrieve the domain name from the database using custom project's settings.
+    This domain is sent to Viveum for the clients redirect.
+    """
+    try:
+        site_id = settings.VIVEUM_PAYMENT.get('RETURN_SITE_ID', settings.SITE_ID)
+        site = Site.objects.get(pk=site_id)
+    except (ObjectDoesNotExist, AttributeError):
+        site = RequestSite(request)
+    return site.domain
 
 
 class OffsiteViveumBackend(object):
@@ -66,7 +79,7 @@ class OffsiteViveumBackend(object):
         if request.user and not isinstance(request.user, AnonymousUser):
             email = request.user.email
         url_scheme = 'https://%s%s' if request.is_secure() else 'http://%s%s'
-        domain = get_current_site(request).domain
+        domain = get_return_domain(request)
         return {
             'PSPID': settings.VIVEUM_PAYMENT.get('PSPID'),
             'CURRENCY': settings.VIVEUM_PAYMENT.get('CURRENCY'),
