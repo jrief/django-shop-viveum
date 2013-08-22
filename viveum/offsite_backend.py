@@ -4,9 +4,9 @@ import logging
 import traceback
 from django.conf import settings
 from django.conf.urls.defaults import patterns, url
-from django.contrib.sites.models import Site, RequestSite
+from django.contrib.sites.models import get_current_site
 from django.core.urlresolvers import reverse
-from django.core.exceptions import SuspiciousOperation, ValidationError, ObjectDoesNotExist
+from django.core.exceptions import SuspiciousOperation, ValidationError
 from django.shortcuts import render_to_response
 from django.contrib.auth.models import AnonymousUser
 from django.template import RequestContext
@@ -19,15 +19,13 @@ from views import PaymentZoneView
 
 def get_return_domain(request):
     """
-    Retrieve the domain name from the database using custom project's settings.
-    This domain is sent to Viveum for the clients redirect.
+    Determine the domain which is used to construct absolute URL's which are sent to the
+    Viveum-PSP and used to
+    - redirect the client back to the shop.
+    - fetch stylesheets to customize the clients layout.
     """
-    try:
-        site_id = settings.VIVEUM_PAYMENT.get('RETURN_SITE_ID', settings.SITE_ID)
-        site = Site.objects.get(pk=site_id)
-    except (ObjectDoesNotExist, AttributeError):
-        site = RequestSite(request)
-    return site.domain
+    domain = settings.VIVEUM_PAYMENT.get('RETURN_DOMAIN', get_current_site(request).domain)
+    return domain
 
 
 class OffsiteViveumBackend(object):
@@ -46,7 +44,7 @@ class OffsiteViveumBackend(object):
     def __init__(self, shop):
         self.shop = shop
         self.logger = logging.getLogger(__name__)
-        assert type(settings.VIVEUM_PAYMENT).__name__ == 'dict', \
+        assert isinstance(settings.VIVEUM_PAYMENT, dict), \
             "You must configure the VIVEUM_PAYMENT dictionary in your settings"
 
     def get_urls(self):
@@ -67,6 +65,7 @@ class OffsiteViveumBackend(object):
         self.sign_form_dict(form_dict)
         order_form = OrderStandardForm(initial=form_dict)
         request_context = RequestContext(request, {'order_form': order_form})
+        self.logger.info('Passing POST parameters to Viveum-PSP: %s', form_dict.__str__())
         return render_to_response('viveum/order_form.html', request_context)
 
     def get_form_dict(self, request):
@@ -95,7 +94,7 @@ class OffsiteViveumBackend(object):
             'OWNERADDRESS': getattr(billing_address, 'address', ''),
             'OWNERADDRESS2': getattr(billing_address, 'address2', ''),
             'OWNERTOWN': getattr(billing_address, 'city', ''),
-            'OWNERCTY': getattr(billing_address, 'country', ''),
+            'OWNERCTY': getattr(billing_address, 'country', '').__str__(),
             'ACCEPTURL': url_scheme % (domain, reverse('viveum_accept')),
             'DECLINEURL': url_scheme % (domain, reverse('viveum_decline')),
         }
