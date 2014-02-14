@@ -3,7 +3,7 @@ import hashlib
 import logging
 import traceback
 from django.conf import settings
-from django.conf.urls.defaults import patterns, url
+from django.conf.urls import patterns, url
 from django.contrib.sites.models import get_current_site
 from django.core.urlresolvers import reverse
 from django.core.exceptions import SuspiciousOperation, ValidationError
