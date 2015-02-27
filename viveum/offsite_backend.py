@@ -46,6 +46,7 @@ class OffsiteViveumBackend(object):
         self.logger = logging.getLogger(__name__)
         assert isinstance(settings.VIVEUM_PAYMENT, dict), \
             "You must configure the VIVEUM_PAYMENT dictionary in your settings"
+        self.logger.info('Initialized backend for Viveum Payment Service Provider')
 
     def get_urls(self):
         urlpatterns = patterns('',
